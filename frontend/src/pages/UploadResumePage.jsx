@@ -38,7 +38,7 @@ const UploadResumePage = () => {
             const response = await uploadResume(file);
             console.log("Upload success:", response);
             // Navigate to interview setup or start
-            navigate('/interview/setup', { state: { resumeId: response.resume_id, analysis: response.analysis } });
+            navigate(`/interview/${response.resume_id}`, { state: { analysis: response.analysis } });
         } catch (err) {
             console.error("Upload error caught in component:", err);
             let detail = "Please try again.";

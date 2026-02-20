@@ -6,23 +6,16 @@ class ResumeAnalyzerAgent:
         self.llm_client = LLMClient()
 
     async def analyze(self, resume_text: str) -> dict:
-        prompt = f"Here is the candidate's resume text:\n\n{resume_text}"
+        # Limit text length to speed up analysis
+        truncated_text = resume_text[:6000]
+        prompt = f"Here is the candidate's resume text:\n\n{truncated_text}"
         response = await self.llm_client.generate_json(prompt, RESUME_ANALYZER_PROMPT)
         
         default_structure = {
             "skills": [],
             "projects": [],
             "experience": [],
-            "achievements": [],
-            "education": [],
-            "strengths": [],
-            "weaknesses": [],
-            "interview_plan": {
-                "intro": [],
-                "projects": [],
-                "technical": [],
-                "hr": []
-            }
+            "achievements": []
         }
 
         if "error" in response:
@@ -32,9 +25,5 @@ class ResumeAnalyzerAgent:
         for key in default_structure:
             if key not in response:
                 response[key] = default_structure[key]
-            elif isinstance(default_structure[key], dict) and isinstance(response[key], dict):
-                for subkey in default_structure[key]:
-                    if subkey not in response[key]:
-                        response[key][subkey] = default_structure[key][subkey]
                         
         return response

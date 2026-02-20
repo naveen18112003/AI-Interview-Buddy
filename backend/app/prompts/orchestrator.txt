@@ -25,8 +25,9 @@ Core Rules:
 
 Time Style (Real Life):
 - Intro: ~5 minutes
-- Resume/Projects: ~15 minutes
-- Technical/DSA: ~10 minutes
+- Experience: 3 questions per item
+- Projects: 4 questions per item
+- Technical/DSA: ~10 minutes (Exactly 2 problems)
 - HR: ~10–12 minutes
 
 If needed, politely say:

@@ -34,13 +34,13 @@ Output structured JSON for internal use only:
     "clarity": 0, // 1-10
     "problem_solving": 0 // 1-10
   },
-  "gap_analysis": [
+  "gap_analysis": [ // Limit to top 3 most critical technical misses
     {
-      "question": "Topic/Question Asked",
-      "candidate_said": "Summary of what they actually answered (or failed to)",
-      "ideal_answer": "The correct, high-level answer a Senior Engineer would give.",
-      "verdict": "Correct / Partial / Incorrect / Missed",
-      "mistake_analysis": "Why their answer was wrong or insufficient."
+      "question": "Topic",
+      "candidate_said": "Summary",
+      "ideal_answer": "Correct explanation",
+      "verdict": "Verdict",
+      "mistake_analysis": "Reason"
     }
   ],
   "strengths": [],

@@ -8,6 +8,7 @@ from .feedback_coach import FeedbackCoachAgent
 from ..utils.prompt_loader import ORCHESTRATOR_PROMPT
 import json
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +38,10 @@ class AgentOrchestrator:
         exp_count = sum(1 for i in (items or []) if "company" in i)
         proj_count = sum(1 for i in (items or []) if "company" not in i)
         
-        # 3 questions for Exp (1 Intro + 2 Deep Dive), 4 for Projects
+        # 3 questions for Exp, 4 for Projects
         resume_stage_end = (exp_count * 3) + (proj_count * 4) + 1 # +1 for intro answer
         
-        # DSA Stage: usually 2 questions
+        # DSA Stage: exactly 2 questions
         dsa_stage_end = resume_stage_end + 2
         
         # Achievements Stage (1 question)
@@ -143,7 +144,23 @@ class AgentOrchestrator:
             else:
                 answer_analysis = "Transition to their background. Skip follow-up background questions."
 
-        # Override for DSA Stage
+        elif stage == "resume_deep_dive":
+            # Specific guidance for resume items
+            item_type = "Experience" if (items and item_step <= 3 and "company" in items[0]) else "Project" # Approximation for safety
+            # Re-derive item_type for accurate guidance
+            if items:
+                running_step = 1
+                for item in items:
+                    limit = 3 if "company" in item else 4
+                    if running_step <= current_step < (running_step + limit):
+                        item_type = "Experience" if "company" in item else "Project"
+                        break
+                    running_step += limit
+
+            answer_analysis = f"Analyze Answer. You are on Question {item_step} of {total_item_questions} for this {item_type}. Moving at high speed. Acknowledge briefly and ask the next technical question from the provided plan."
+            if item_step == total_item_questions:
+                answer_analysis += " This is the FINAL question for this item. Transition to the next item or DSA stage immediately after the answer."
+
         elif stage == "dsa_tech":
             current_item_str = "Technical Problem Solving (DSA)"
             # Recalculate DSA start
@@ -154,13 +171,13 @@ class AgentOrchestrator:
             
             if dsa_step == 1:
                 answer_analysis = (
-                    "Provide a HIGH-FREQUENCY MEDIUM difficulty DSA problem (e.g., Two Sum, Linked List Cycle, or Valid Parentheses). "
+                    "Provide a HIGH-FREQUENCY MEDIUM difficulty DSA problem. "
                     "Format the problem in GEEKSFORGEEKS STYLE. "
                     "Explicitly state: 'You have 8 minutes. Write only the core function logic.' "
                 )
             elif dsa_step == 2:
                 answer_analysis = (
-                    "Provide a second HIGH-FREQUENCY MEDIUM difficulty DSA problem from a DIFFERENT topic (e.g., Trees/Graphs). "
+                    "Provide a second HIGH-FREQUENCY MEDIUM difficulty DSA problem from a DIFFERENT topic. "
                     "Format it in GEEKSFORGEEKS STYLE. "
                     "Explicitly state: 'Second challenge. 8 minutes. Focus on function logic.' "
                     "After this, we will move to the final Behavioral/HR round."
@@ -176,70 +193,65 @@ class AgentOrchestrator:
         elif stage == "hr_round":
             current_item_str = "HR Round"
             # Calculate HR specific step
-            # HR starts after achievements (or dsa if no achievements)
-            hr_stage_start = (achievements_stage_end if has_achievements else dsa_stage_end) + 1
+            hr_stage_start = achievements_stage_end if has_achievements else dsa_stage_end
             hr_step = current_step - hr_stage_start + 1
             
             hr_questions = [
-                "Walk me through your resume.",
                 "Why do you want to join our company?",
-                "Why this role (SDE / AI / Intern)?",
-                "What are your strengths?",
-                "What is your biggest weakness?",
-                "Tell me about a challenge you faced and how you solved it.",
-                "Tell me about a failure and what you learned from it.",
-                "Describe a conflict with a teammate and how you handled it.",
-                "How do you handle feedback or criticism?",
-                "Why should we hire you?",
+                "Why this role specifically?",
+                "What are your top 3 strengths?",
+                "Tell me about a time you handled a difficult technical conflict.",
+                "How do you stay updated with new technologies?",
+                "Tell me about a project where you took major ownership.",
+                "How do you handle tight deadlines and pressure?",
+                "What is your preferred work style (remote/hybrid/colocated)?",
                 "Where do you see yourself in 3–5 years?",
-                "How do you handle pressure or tight deadlines?",
-                "Tell me about a time you took initiative.",
-                "Do you have any questions for us?"
+                "Do you have any questions for me?"
             ]
             
-            if 1 <= hr_step <= 14:
+            total_hr = len(hr_questions)
+            if 1 <= hr_step <= total_hr:
                 question_text = hr_questions[hr_step - 1]
                 if hr_step == 1:
                     answer_analysis = (
                         f"Start the HR round. Say: 'Great work on the technical problems. Now, let's move to the HR and Behavioral round.' "
-                        f"Address the candidate by name if possible. Then ask: '{question_text}'"
+                        f"Then ask: '{question_text}'"
                     )
-                elif hr_step == 14:
+                elif hr_step == total_hr:
                     answer_analysis = (
                         f"Ask the final question: '{question_text}'. "
-                        "After the candidate answers this, conclude the interview by saying: 'Thank you. That concludes the HR and Behavioral round. The interview is now complete. You can close the window.'"
+                        "After the candidate answers, conclude by saying: 'Thank you. That concludes the interview. You can close the window.'"
                     )
                 else:
                     answer_analysis = f"Ask the next HR question: '{question_text}'"
             else:
                  answer_analysis = "Conclude the interview. Say: 'Thank you. That concludes the interview. You can close the window.'"
 
-        elif current_step >= 0:
-            # Default behavior for resume deep dive
+        else:
+            # Fallback
             answer_analysis = "Acknowledge the candidate's last answer very briefly and move to the next question. FOCUS ON TECHNICAL DEPTH."
-            
             try:
-                # Use followup agent to see if we MUST probe, but keep it minimal to avoid getting stuck
-                quality_response = await self.followup_agent.evaluate_answer(last_question, candidate_answer, resume_context)
-                quality = quality_response.get("quality", "good")
-                
-                # STRICT MODE: No follow-up probes. Stick to the plan.
-                answer_analysis = "Acknowledge the answer and move strictly to the next planned question (Role/Tech/System). Do not probe deeper."
+                # Use followup agent to see if we MUST probe (only for resume rounds)
+                if stage == "resume_deep_dive":
+                    quality_response = await self.followup_agent.evaluate_answer(last_question, candidate_answer, resume_context)
+                    quality = quality_response.get("quality", "good")
+                    if quality == "shallow":
+                        answer_analysis = f"The answer was shallow. Ask this probe: {quality_response.get('followup_question')}"
             except Exception as e:
                 logger.error(f"Followup analysis failed: {e}")
 
-        # 3. Compile history
-        history_str = "\n".join([f"Q: {item['question']}\nA: {item['answer']}" for item in (interview_history or [])])
+        # 3. Compile history (limit context for speed)
+        recent_history = (interview_history or [])[-8:]
+        history_str = "\n".join([f"Q: {item['question']}\nA: {item['answer']}" for item in recent_history])
         if last_question and candidate_answer:
             history_str += f"\nQ: {last_question}\nA: {candidate_answer}"
         
-        # 4. Generate response
-        # 4. Generate response
+        # 4. Generate response and run Gap concurrently
         try:
-            response_text = await self.interviewer_agent.generate_response(
+            interviewer_task = self.interviewer_agent.generate_response(
                 current_round=current_round,
                 stage=stage,
-                resume_context=resume_context,
+                resume_context=resume_context[:2500], # Trim context for speed
                 conversation_history=history_str,
                 last_answer=candidate_answer,
                 followup_instruction=answer_analysis,
@@ -247,6 +259,13 @@ class AgentOrchestrator:
                 item_step=item_step,
                 total_item_questions=total_item_questions
             )
+            
+            # Run LLM call and 3.5s sleep together (Restoring 3.5s as per User preference)
+            response_text, _ = await asyncio.gather(
+                interviewer_task,
+                asyncio.sleep(3.5)
+            )
+
             return {
                 "response": response_text,
                 "stage": stage
@@ -280,18 +299,29 @@ class AgentOrchestrator:
         if not full_transcript:
             return "No interview data available to generate a report."
 
-        # Evaluate Technical
+        # Evaluate Technical and HR in PARALLEL for speed
         try:
-            technical_eval = await self.technical_evaluator.evaluate(full_transcript, resume_context)
-        except Exception as e:
-            logger.error(f"Technical evaluation failed: {e}")
-            technical_eval = "Technical evaluation unavailable."
+            # Trim contexts drastically for speed
+            trimmed_tech = full_transcript[:6000]
+            trimmed_hr = (hr_transcript or full_transcript)[:4000]
+            trimmed_resume = resume_context[:2000]
 
-        # Evaluate HR
-        try:
-            hr_eval = await self.hr_evaluator.evaluate(hr_transcript or full_transcript)
+            # Define tasks
+            tech_task = self.technical_evaluator.evaluate(trimmed_tech, trimmed_resume)
+            hr_task = self.hr_evaluator.evaluate(trimmed_hr)
+
+            # Run concurrently
+            technical_eval, hr_eval = await asyncio.gather(tech_task, hr_task)
+            
         except Exception as e:
-            logger.error(f"HR evaluation failed: {e}")
-            hr_eval = "HR evaluation unavailable."
+            logger.error(f"Parallel evaluation failed: {e}")
+            technical_eval = {"error": "Technical evaluation unavailable."}
+            hr_eval = {"error": "HR evaluation unavailable."}
         
-        return await self.feedback_coach.generate_report(technical_eval, hr_eval, full_transcript, resume_context)
+        # Final synthesis
+        return await self.feedback_coach.generate_report(
+            technical_eval, 
+            hr_eval, 
+            full_transcript[:8000], 
+            resume_context[:2000]
+        )

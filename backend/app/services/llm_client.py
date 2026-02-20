@@ -27,7 +27,7 @@ class LLMClient:
         
         last_error = None
         for attempt, key in enumerate(shuffled_keys):
-            masked_key = f"{key[:7]}...{key[-4:]}" if len(key) > 11 else "***"
+            masked_key = f"{key[:7]}...{key[-4:]}" if key and len(key) > 11 else "***"
             logger.info(f"Attempt {attempt + 1}/{len(shuffled_keys)} using token: {masked_key}")
             try:
                 client = self._get_api_client(key)
@@ -39,7 +39,8 @@ class LLMClient:
                     model=model,
                     temperature=0.7,
                     max_tokens=2000,
-                    top_p=1
+                    top_p=1,
+                    timeout=15.0
                 )
                 return response.choices[0].message.content
             except Exception as e:

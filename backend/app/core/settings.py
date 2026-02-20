@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     TTS_PROVIDER: str = "google" # or "azure"
     
     # Model
-    MODEL_NAME: str = "gpt-4o"
+    MODEL_NAME: str = "gpt-4o-mini"
 
     @property
     def api_keys_list(self) -> list[str]:
