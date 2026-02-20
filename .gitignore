@@ -1,3 +1,23 @@
-.vercel
-.env*.local
+# Environment files
 .env
+.env*.local
+
+# Node
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.pytest_cache/
+
+# Databases & local storage
+*.db
+backend/data/
+backend/audio_output/
+backend/uploads/
+
+# OS files
+.DS_Store
+Thumbs.db
